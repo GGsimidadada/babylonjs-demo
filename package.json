@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "babylonjs": "^4.2.0",
+    "babylonjs-loaders": "^4.2.0",
     "vue": "^3.2.23"
   },
   "devDependencies": {
