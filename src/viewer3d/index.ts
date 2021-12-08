@@ -39,6 +39,7 @@ class Viewer3d {
         // 创建一个半球光源，
         const light = new HemisphericLight('hemispheric-light', Vector3.Up(), scene);
         light.groundColor = Color3.White();
+        // 必须执行，在每一帧中刷新场景
         engine.runRenderLoop(() => scene.render());
         this.engine = engine;
         this.scene = scene;
@@ -47,6 +48,11 @@ class Viewer3d {
         window.addEventListener('resize', this.onResize);
     }
 
+    /**
+     * 将物体移动一段距离
+     * @param mesh 目标物体
+     * @param diff 移动距离
+     */
     move(mesh: Mesh, diff: Point) {
         const {
             x = 0,
@@ -60,6 +66,11 @@ class Viewer3d {
         }
     }
 
+    /**
+     * 将物体移动到指定位置
+     * @param mesh 目标物体
+     * @param point 目标位置
+     */
     moveTo(mesh: Mesh, point: Point) {
         const {
             x = mesh.position.x,
@@ -74,7 +85,12 @@ class Viewer3d {
         this.move(mesh, diff);
     }
 
-    // 创建物体。每个物体的name值都是全局唯一的
+    /**
+     * 创建一个指定类型的物体
+     * @param type 物体类型 e.g. box/sphere
+     * @param option 初始化参数，具体参考 https://doc.babylonjs.com/divingDeeper/mesh/creation/set
+     * @returns 创建的物体，没有匹配的type则返回null
+     */
     addMesh(type: string, option: any) {
         const opt = {};
         let mesh: Mesh = null;
@@ -94,17 +110,22 @@ class Viewer3d {
         return mesh;
     }
 
-    removeMesh(mesh: string | Mesh) {
-        if (typeof mesh === 'string') {
-            mesh = this.scene.getMeshByName(mesh) as Mesh;
-        }
-        if (mesh) {
-            this.disconnectLinesOnMesh(mesh);
-            mesh.dispose();
-            this.scene.removeMesh(mesh);
-        }
+    /**
+     * 从场景中移除一个物体
+     * @param mesh 目标物体
+     */
+    removeMesh(mesh: Mesh) {
+        this.disconnectLinesOnMesh(mesh);
+        mesh.dispose();
+        this.scene.removeMesh(mesh);
     }
 
+    /**
+     * 创建一条线以连接两个物体
+     * @param mesh1 起始物体
+     * @param mesh2 终止物体
+     * @returns 连接的线
+     */
     addLine(mesh1: Mesh, mesh2: Mesh) {
         const points = [mesh1.position, mesh2.position];
         const option: any = {
@@ -123,6 +144,10 @@ class Viewer3d {
         return line;
     }
 
+    /**
+     * 从场景中移除一条线
+     * @param line 线
+     */
     removeLine(line: LinesMesh) {
         const { from, to } = line.metadata;
         if (from) {
@@ -135,6 +160,10 @@ class Viewer3d {
         this.scene.removeMesh(line);
     }
 
+    /**
+     * 从场景中移除所有与目标物体关联的线
+     * @param mesh 目标物体
+     */
     removeLinesOnMesh(mesh: Mesh) {
         const { lines } = mesh.metadata;
         [...lines].forEach(line => {
@@ -142,15 +171,29 @@ class Viewer3d {
         });
     }
 
-    // line的顶点坐标发生变化后，必须调用此方法才能更新
+    /**
+     * 更新一条线
+     * 在babylonjs中，直接修改线的顶点坐标无法直接改变线，必须使用MeshBuilder.CreateLines更新
+     * @param line 要更新的线
+     */
     updateLine(line: LinesMesh) {
         MeshBuilder.CreateLines(line.name, line.metadata.option, this.scene);
     }
 
+    /**
+     * 更新目标物体上的所有关联的线
+     * @param mesh 目标物体
+     */
     updateLinesOnMesh(mesh: Mesh) {
         mesh.metadata.lines.forEach((line: LinesMesh) => this.updateLine(line));
     }
 
+    /**
+     * 将目标物体和目标线建立关联关系
+     * @param mesh 目标物体
+     * @param line 目标线
+     * @param type 物体是线的起始物体还是终止物体。from: 起始  to: 终止
+     */
     connectLine(mesh: Mesh, line: LinesMesh, type: 'from' | 'to') {
         const { lines } = mesh.metadata;
         const { option } = line.metadata;
@@ -168,6 +211,11 @@ class Viewer3d {
         this.updateLine(line);
     }
 
+    /**
+     * 解除目标物体与目标线的关联关系
+     * @param mesh 目标物体
+     * @param line 目标线
+     */
     disconnectLine(mesh: Mesh, line: LinesMesh) {
         const { lines } = mesh.metadata;
         const { from, to, option } = line.metadata;
@@ -186,6 +234,11 @@ class Viewer3d {
         this.updateLine(line);
     }
 
+    /**
+     * 解除目标物体上所有关联线的关联关系
+     * 此方法不会从场景中移除线，只是解除关联关系
+     * @param mesh 目标物体
+     */
     disconnectLinesOnMesh(mesh: Mesh) {
         const { lines } = mesh.metadata;
         [...lines].forEach(line => {
@@ -193,6 +246,11 @@ class Viewer3d {
         });
     }
 
+    /**
+     * 寻找目标物体所在嵌套关系中的根物体
+     * @param mesh 目标物体
+     * @returns 根物体
+     */
     root(mesh: Mesh) {
         if (mesh.parent) {
             return this.root(mesh.parent as Mesh);
@@ -200,7 +258,14 @@ class Viewer3d {
         return mesh;
     }
 
-    async importMesh(rootPath: string, name: string) {
+    /**
+     * 从文件中导入物体
+     * @param rootPath 文件所在目录（不包含文件名）
+     * @param name 文件名
+     * @param meshName 要导入的物体名称。不传或者空字符串表示导入所有物体
+     * @returns result: 所有内容   rootMesh: 根物体
+     */
+    async importMesh(rootPath: string, name: string, meshName: string | string[] = '') {
         // 从文件中导入mesh
         // 第一个参数为空字符串时，表示导入所有mesh
         // 第二个参数为文件所在路径
@@ -217,7 +282,7 @@ class Viewer3d {
         }
         rootMesh.metadata.type = 'import';
         rootMesh.metadata.lines = [];
-        return rootMesh;
+        return { result, rootMesh };
     }
 
     onResize = () => {
